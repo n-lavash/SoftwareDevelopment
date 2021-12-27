@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 
 namespace DiContainer
@@ -23,46 +22,49 @@ namespace DiContainer
             relations.Add(new Service(typeof(TService), typeof(TRealiz), Service2.Singleton));
         }
 
-        public T Get<T>() => (T)Get(typeof(T));
-
-        public object Get(Type serviceType)
+        public object Get(Type service, List<Type> list)
         {
-            var desc = relations.SingleOrDefault(x => x.ServiceType == serviceType);
-
-            if (desc == null)
+            var descriptor = relations.SingleOrDefault(x => x.ServiceType == service);
+            if (descriptor == null)
             {
                 throw new Exception("Не найден сервис");
             }
-
-            if (desc.Implement != null)
+            if (descriptor.Implement != null)
             {
-                return desc.Implement;
+                return descriptor.Implement;
             }
 
-            var actualType = desc.ImplementType;
-            var construct = actualType.GetConstructors().First();
 
-            if (construct.GetParameters().Any(x => CheckCycle(serviceType, x.ParameterType)))
+
+            var actual = descriptor.ImplementType;
+            var construct = actual.GetConstructors().First();
+
+            List<object> new_list = new List<object>();
+
+            foreach (var p in construct.GetParameters())
             {
-                throw new Exception("Зацикливание");
+                if (list.Contains(service))
+                {
+                    throw new Exception("Зацикливание");
+                }
+
+                list.Add(service);
+
+                var newParameter = Get(p.ParameterType, list);
+
+                list.Remove(service);
+
+                new_list.Add(newParameter);
             }
 
-            var paramet = construct.GetParameters().Select(x => Get(x.ParameterType)).ToArray();
-            var implement = Activator.CreateInstance(actualType, paramet);
 
-            if (desc.Now == Service2.Singleton)
+            var parameters = new_list.ToArray();
+            var implementation = Activator.CreateInstance(actual, parameters);
+            if (descriptor.Now == Service2.Singleton)
             {
-                desc.Implement = implement;
+                descriptor.Implement = implementation;
             }
-            return implement;
-        }
-
-        public bool CheckCycle(Type serviceType, Type parametType)
-        {
-            var desc = relations.SingleOrDefault(x => x.ServiceType == parametType);
-            var actType = desc.ImplementType;
-            var constructType = actType.GetConstructors().First();
-            return constructType.GetParameters().Any(x => Equals(serviceType, x.ParameterType));
+            return implementation;
         }
     }
 }
